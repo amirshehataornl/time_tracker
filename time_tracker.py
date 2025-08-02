@@ -286,7 +286,6 @@ def create_window():
 	"""Create the main Tkinter window."""
 	window = tk.Tk()
 	window.title("Time Tracker")
-	window.geometry("300x270")
 
 	def show_work_log():
 		if not os.path.exists("work_log.json"):
@@ -296,12 +295,29 @@ def create_window():
 			del(log['g_state'])
 		display_work_log(window, log)
 
+	# Create a temporary button to measure its height
+	temp_button = tk.Button(window, text="Test", font=("Helvetica", 15), width=20)
+	temp_button.pack(pady=10)
+	button_height = temp_button.winfo_reqheight()
+	temp_button.destroy()
+
+	# Calculate total height
+	num_buttons = 5
+	pady_per_button = 20
+	total_button_height = num_buttons * button_height
+	total_pady = (num_buttons - 1) * pady_per_button + 10
+	border_and_title = 40
+	total_height = total_button_height + total_pady + border_and_title
+
+	# Set window geometry with calculated height
+	window.geometry(f"300x{total_height}")
+
 	# Add buttons
-	tk.Button(window, text="Start Work", command=log_start_time, width=20).pack(pady=10)
-	tk.Button(window, text="End Work", command=log_end_time, width=20).pack(pady=10)
-	tk.Button(window, text="Generate Report", command=generate_report, width=20).pack(pady=10)
-	tk.Button(window, text="Show Work Log", command=show_work_log, width=20).pack(pady=10)
-	tk.Button(window, text="Remaining Time", command=calculate_remaining_time, width=20).pack(pady=10)
+	tk.Button(window, text="Start Work", font=("Helvetica", 15), command=log_start_time, width=20).pack(pady=10)
+	tk.Button(window, text="End Work", font=("Helvetica", 15), command=log_end_time, width=20).pack(pady=10)
+	tk.Button(window, text="Generate Report", font=("Helvetica", 15), command=generate_report, width=20).pack(pady=10)
+	tk.Button(window, text="Show Work Log", font=("Helvetica", 15), command=show_work_log, width=20).pack(pady=10)
+	tk.Button(window, text="Remaining Time", font=("Helvetica", 15), command=calculate_remaining_time, width=20).pack(pady=10)
 
 	# Handle window close event
 	window.protocol("WM_DELETE_WINDOW", window.quit)
