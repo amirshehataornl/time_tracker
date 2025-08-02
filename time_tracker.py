@@ -132,8 +132,11 @@ def display_work_log(parent, json_data):
 			for i, entry in enumerate(json_data[date]):
 				start = entry["start"]
 				end = entry["end"]
-				total_time = calculate_duration(start, end, date)
-				day_total_seconds += total_time
+				if end:
+					total_time = calculate_duration(start, end, date)
+					day_total_seconds += total_time
+				else:
+					total_time = 0
 				tree.insert(
 					"",
 					tk.END,
