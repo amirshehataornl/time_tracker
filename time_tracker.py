@@ -47,11 +47,11 @@ def format_date_with_suffix(date_str):
 	return formatted_date
 
 def display_work_log(parent, json_data):
-	"""Display work log data in a formatted Tkinter table in a new window."""
+	"""Display work log data in a formatted Tkinter table with separate Delete and Edit columns."""
 	# Create a new top-level window for the table
 	table_window = tk.Toplevel(parent)
 	table_window.title("Work Time Records")
-	table_window.geometry("700x450")
+	table_window.geometry("900x450")  # Increased width for two action columns
 	table_window.configure(bg="#f5f6f5")
 
 	# Function to format seconds into HH:MM:SS
@@ -62,9 +62,137 @@ def display_work_log(parent, json_data):
 
 	# Function to calculate time difference in seconds
 	def calculate_duration(start, end, date):
-		start_dt = datetime.datetime.strptime(f"{date} {start}", "%Y-%m-%d %I:%M:%S %p")
-		end_dt = datetime.datetime.strptime(f"{date} {end}", "%Y-%m-%d %I:%M:%S %p")
-		return int((end_dt - start_dt).total_seconds())
+		try:
+			start_dt = datetime.datetime.strptime(f"{date} {start}", "%Y-%m-%d %I:%M:%S %p")
+			end_dt = datetime.datetime.strptime(f"{date} {end}", "%Y-%m-%d %I:%M:%S %p")
+			return int((end_dt - start_dt).total_seconds())
+		except ValueError:
+			return 0
+
+	# Function to delete an entry and update JSON
+	def delete_entry(entry_index, date):
+		try:
+			# Create a copy of json_data to modify
+			log = json_data.copy()
+			# Preserve g_state if it exists
+			g_state_temp = log.get('g_state')
+			if g_state_temp is not None:
+				del log['g_state']
+			# Remove the entry
+			if date in log and 0 <= entry_index < len(log[date]):
+				del log[date][entry_index]
+				# Remove date if no entries remain
+				if not log[date]:
+					del log[date]
+				# Restore g_state
+				if g_state_temp is not None:
+					log['g_state'] = g_state_temp
+				# Save to file
+				save_log(log)
+				# Refresh the table
+				table_window.destroy()
+				if log:
+					display_work_log(parent, log)
+				else:
+					empty_window = tk.Toplevel(parent)
+					empty_window.title("Work Time Records")
+					empty_window.geometry("300x100")
+					empty_window.configure(bg="#f5f6f5")
+					tk.Label(
+						empty_window,
+						text="No work log entries to display",
+						font=("Helvetica", 12),
+						bg="#f5f6f5",
+						fg="#333333",
+						pady=20
+					).pack()
+		except Exception as e:
+			messagebox.showerror("Error", f"Failed to delete entry: {str(e)}")
+
+	# Function to edit an entry
+	def edit_entry(entry_index, date):
+		try:
+			log = json_data.copy()
+			g_state_temp = log.get('g_state')
+			if g_state_temp is not None:
+				del log['g_state']
+			entry = log[date][entry_index]
+			start = entry["start"]
+			end = entry["end"]
+
+			# Create edit dialog
+			edit_window = tk.Toplevel(table_window)
+			edit_window.title("Edit Work Entry")
+			edit_window.geometry("300x200")
+			edit_window.configure(bg="#f5f6f5")
+
+			tk.Label(edit_window, text="Start Time (HH:MM:SS AM/PM):", bg="#f5f6f5").pack(pady=5)
+			start_entry = tk.Entry(edit_window, width=20)
+			start_entry.insert(0, start)
+			start_entry.pack(pady=5)
+
+			tk.Label(edit_window, text="End Time (HH:MM:SS AM/PM):", bg="#f5f6f5").pack(pady=5)
+			end_entry = tk.Entry(edit_window, width=20)
+			end_entry.insert(0, end if end else "")
+			end_entry.pack(pady=5)
+
+			def save_changes():
+				new_start = start_entry.get()
+				new_end = end_entry.get()
+				try:
+					# Validate time format
+					datetime.datetime.strptime(f"{date} {new_start}", "%Y-%m-%d %I:%M:%S %p")
+					if new_end:
+						datetime.datetime.strptime(f"{date} {new_end}", "%Y-%m-%d %I:%M:%S %p")
+					# Update entry
+					log[date][entry_index]["start"] = new_start
+					log[date][entry_index]["end"] = new_end
+					# Restore g_state
+					if g_state_temp is not None:
+						log['g_state'] = g_state_temp
+					# Save to file
+					save_log(log)
+					# Refresh table
+					table_window.destroy()
+					display_work_log(parent, log)
+					edit_window.destroy()
+				except ValueError:
+					messagebox.showerror("Error", "Invalid time format. Use HH:MM:SS AM/PM")
+				except Exception as e:
+					messagebox.showerror("Error", f"Failed to save changes: {str(e)}")
+
+			tk.Button(
+				edit_window,
+				text="Save",
+				command=save_changes,
+				width=10,
+				bg="#4a90e2",
+				fg="white"
+			).pack(pady=10)
+
+		except Exception as e:
+			messagebox.showerror("Error", f"Failed to edit entry: {str(e)}")
+
+	# Function to handle click events on Delete and Edit columns
+	def on_tree_click(event):
+		# Identify the clicked item and column
+		item = tree.identify_row(event.y)
+		column = tree.identify_column(event.x)
+		if not item or column not in ("#5", "#6"):  # Delete (#5) or Edit (#6) columns
+			return
+		# Get the tags to determine if it's a header row
+		tags = tree.item(item, "tags")
+		if "header" in tags:  # Ignore header rows
+			return
+		# Extract index and date from tags
+		for tag in tags:
+			if tag.startswith("entry_"):
+				_, date, idx = tag.split("_")
+				idx = int(idx)
+				if column == "#5":  # Delete column
+					delete_entry(idx, date)
+				elif column == "#6":  # Edit column
+					edit_entry(idx, date)
 
 	# Header frame for title
 	header_frame = tk.Frame(table_window, bg="#4a90e2")
@@ -84,7 +212,7 @@ def display_work_log(parent, json_data):
 	table_frame.pack(padx=10, pady=5, fill="both", expand=True)
 
 	# Define column headers
-	columns = ("Work Date", "Start Time", "End Time", "Total Time")
+	columns = ("Work Date", "Start Time", "End Time", "Total Time", "Delete", "Edit")
 	tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=10)
 	tree.pack(side="left", fill="both", expand=True)
 
@@ -110,40 +238,44 @@ def display_work_log(parent, json_data):
 	# Set column headings and configure alignment
 	for col in columns:
 		tree.heading(col, text=col, anchor="center")
-		tree.column(col, width=150, anchor="center")
+		tree.column(col, width=150 if col not in ("Delete", "Edit") else 40, anchor="center")
 
 	# Add scrollbars
 	vsb = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
 	vsb.pack(side="right", fill="y")
 	tree.configure(yscrollcommand=vsb.set)
 
+	# Bind click event to the Treeview
+	tree.bind("<Button-1>", on_tree_click)
+
 	# Process JSON data and populate the table
-	day_total_seconds = 0
+	total_seconds = 0
 	try:
 		dates = list(json_data.keys())
 		j = 0
 		for date in dates:
-			tree.insert(
+			day_total_seconds = 0
+			header_id = tree.insert(
 				"",
 				tk.END,
-				values=(format_date_with_suffix(date), "", "", ""),
+				values=(format_date_with_suffix(date), "", "", "", "", ""),
 				tags=("header",)
 			)
 			for i, entry in enumerate(json_data[date]):
 				start = entry["start"]
 				end = entry["end"]
-				if end:
-					total_time = calculate_duration(start, end, date)
-					day_total_seconds += total_time
-				else:
-					total_time = 0
+				total_time = calculate_duration(start, end, date) if end else 0
+				total_seconds += total_time
+				day_total_seconds += total_time
+				# Add action text and unique tag for the entry
 				tree.insert(
 					"",
 					tk.END,
-					values=(date, start, end, format_duration(total_time)),
-					tags=("even" if j % 2 == 0 else "odd",)
+					values=(format_date_with_suffix(date), start, end if end else "N/A", format_duration(total_time), "🗑️", "✏️"),
+					tags=("even" if j % 2 == 0 else "odd", f"entry_{date}_{i}")
 				)
 				j += 1
+			tree.item(header_id, values=(format_date_with_suffix(date), "", "", format_duration(day_total_seconds), "", ""))
 	except (KeyError, ValueError, IndexError) as e:
 		error_label = tk.Label(
 			table_window,
@@ -155,15 +287,20 @@ def display_work_log(parent, json_data):
 		error_label.pack(pady=10)
 		return
 
-	# Configure alternating row colors
-	tree.tag_configure("even", background="#f0f0f0", font=("Helvetica", 10, "bold"), foreground="red")
+	# Configure alternating row colors and action column styles
+	tree.tag_configure("even", background="#f0f0f0", font=("Helvetica", 10, "bold"), foreground="blue")
 	tree.tag_configure("odd", background="#ffffff", font=("Helvetica", 10, "bold"))
 	tree.tag_configure("header", background="#add8e6", font=("Helvetica", 12, "bold"))
+	# Apply action column styles to non-header rows
+	for item in tree.get_children():
+		tags = tree.item(item, "tags")
+		if "header" not in tags:
+			tree.item(item, tags=tags + ("delete_cell", "edit_cell"))
 
 	# Display day total time
 	day_total_label = tk.Label(
 		table_window,
-		text=f"Total Time: {format_duration(day_total_seconds)}",
+		text=f"Total Time: {format_duration(total_seconds)}",
 		font=("Helvetica", 12, "bold"),
 		bg="#f5f6f5",
 		fg="#333333",
@@ -316,8 +453,8 @@ def create_window():
 	window.geometry(f"300x{total_height}")
 
 	# Add buttons
-	tk.Button(window, text="Start Work", font=("Helvetica", 15), command=log_start_time, width=20).pack(pady=10)
-	tk.Button(window, text="End Work", font=("Helvetica", 15), command=log_end_time, width=20).pack(pady=10)
+	tk.Button(window, text="Start Work", font=("Helvetica", 15), bg="green", fg="white", command=log_start_time, width=20).pack(pady=10)
+	tk.Button(window, text="End Work", font=("Helvetica", 15), bg="red", fg="white", command=log_end_time, width=20).pack(pady=10)
 	tk.Button(window, text="Generate Report", font=("Helvetica", 15), command=generate_report, width=20).pack(pady=10)
 	tk.Button(window, text="Show Work Log", font=("Helvetica", 15), command=show_work_log, width=20).pack(pady=10)
 	tk.Button(window, text="Remaining Time", font=("Helvetica", 15), command=calculate_remaining_time, width=20).pack(pady=10)
