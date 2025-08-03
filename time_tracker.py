@@ -141,9 +141,11 @@ def display_work_log(parent, json_data):
 				new_end = end_entry.get()
 				try:
 					# Validate time format
-					datetime.datetime.strptime(f"{date} {new_start}", "%Y-%m-%d %I:%M:%S %p")
+					start_dt = datetime.datetime.strptime(f"{date} {new_start}", "%Y-%m-%d %I:%M:%S %p")
+					new_start = start_dt.strftime("%I:%M:%S %p")
 					if new_end:
-						datetime.datetime.strptime(f"{date} {new_end}", "%Y-%m-%d %I:%M:%S %p")
+						end_dt = datetime.datetime.strptime(f"{date} {new_end}", "%Y-%m-%d %I:%M:%S %p")
+						new_end = end_dt.strftime("%I:%M:%S %p")
 					# Update entry
 					log[date][entry_index]["start"] = new_start
 					log[date][entry_index]["end"] = new_end
@@ -173,7 +175,65 @@ def display_work_log(parent, json_data):
 		except Exception as e:
 			messagebox.showerror("Error", f"Failed to edit entry: {str(e)}")
 
-	# Function to handle click events on Delete and Edit columns
+	# Function to add a new entry
+	def add_entry(date):
+		try:
+			log = json_data.copy()
+			g_state_temp = log.get('g_state')
+			if g_state_temp is not None:
+				del log['g_state']
+
+			add_window = tk.Toplevel(table_window)
+			add_window.title("Add Work Entry")
+			add_window.geometry("300x200")
+			add_window.configure(bg="#f5f6f5")
+
+			tk.Label(add_window, text="Start Time (HH:MM:SS AM/PM):", bg="#f5f6f5").pack(pady=5)
+			start_entry = tk.Entry(add_window, width=20)
+			start_entry.pack(pady=5)
+
+			tk.Label(add_window, text="End Time (HH:MM:SS AM/PM):", bg="#f5f6f5").pack(pady=5)
+			end_entry = tk.Entry(add_window, width=20)
+			end_entry.pack(pady=5)
+
+			def save_new_entry():
+				new_start = start_entry.get()
+				new_end = end_entry.get()
+				try:
+					start_dt = datetime.datetime.strptime(f"{date} {new_start}", "%Y-%m-%d %I:%M:%S %p")
+					new_start = start_dt.strftime("%I:%M:%S %p")
+					if new_end:
+						end_dt = datetime.datetime.strptime(f"{date} {new_end}", "%Y-%m-%d %I:%M:%S %p")
+						new_end = end_dt.strftime("%I:%M:%S %p")
+					if date not in log:
+						log[date] = []
+					log[date].append({"start": new_start, "end": new_end if new_end else None})
+					# Sort entries by start time
+					log[date].sort(key=lambda x: datetime.datetime.strptime(f"{date} {x['start']}", "%Y-%m-%d %I:%M:%S %p"))
+					if g_state_temp is not None:
+						log['g_state'] = g_state_temp
+					save_log(log)
+					table_window.destroy()
+					display_work_log(parent, log)
+					add_window.destroy()
+				except ValueError:
+					messagebox.showerror("Error", "Invalid time format. Use HH:MM:SS AM/PM")
+				except Exception as e:
+					messagebox.showerror("Error", f"Failed to add entry: {str(e)}")
+
+			tk.Button(
+				add_window,
+				text="Save",
+				command=save_new_entry,
+				width=10,
+				bg="#4a90e2",
+				fg="white"
+			).pack(pady=10)
+
+		except Exception as e:
+			messagebox.showerror("Error", f"Failed to add entry: {str(e)}")
+
+	# Function to handle click events on Delete, Edit, and Add columns
 	def on_tree_click(event):
 		# Identify the clicked item and column
 		item = tree.identify_row(event.y)
@@ -182,17 +242,24 @@ def display_work_log(parent, json_data):
 			return
 		# Get the tags to determine if it's a header row
 		tags = tree.item(item, "tags")
-		if "header" in tags:  # Ignore header rows
-			return
-		# Extract index and date from tags
-		for tag in tags:
-			if tag.startswith("entry_"):
-				_, date, idx = tag.split("_")
-				idx = int(idx)
-				if column == "#5":  # Delete column
-					delete_entry(idx, date)
-				elif column == "#6":  # Edit column
-					edit_entry(idx, date)
+		if column == "#5" and "header" not in tags:  # Delete action
+			for tag in tags:
+				if tag.startswith("entry_"):
+					_, date, idx = tag.split("_")
+					delete_entry(int(idx), date)
+		elif column == "#6":  # Edit or Add action
+			if "header" in tags:
+				# Add action for header row
+				for tag in tags:
+					if tag.startswith("date_"):
+						date = tag.split("_")[1]
+						add_entry(date)
+			else:
+				# Edit action for data row
+				for tag in tags:
+					if tag.startswith("entry_"):
+						_, date, idx = tag.split("_")
+						edit_entry(int(idx), date)
 
 	# Header frame for title
 	header_frame = tk.Frame(table_window, bg="#4a90e2")
@@ -259,7 +326,7 @@ def display_work_log(parent, json_data):
 				"",
 				tk.END,
 				values=(format_date_with_suffix(date), "", "", "", "", ""),
-				tags=("header",)
+				tags=("header", f"date_{date}")
 			)
 			for i, entry in enumerate(json_data[date]):
 				start = entry["start"]
@@ -271,11 +338,11 @@ def display_work_log(parent, json_data):
 				tree.insert(
 					"",
 					tk.END,
-					values=(format_date_with_suffix(date), start, end if end else "N/A", format_duration(total_time), "🗑️", "✏️"),
+					values=(format_date_with_suffix(date), start, end if end else "N/A", format_duration(total_time), "\u274C", "\U0000270E"),
 					tags=("even" if j % 2 == 0 else "odd", f"entry_{date}_{i}")
 				)
 				j += 1
-			tree.item(header_id, values=(format_date_with_suffix(date), "", "", format_duration(day_total_seconds), "", ""))
+			tree.item(header_id, values=(format_date_with_suffix(date), "", "", format_duration(day_total_seconds), "", "\u2795"))
 	except (KeyError, ValueError, IndexError) as e:
 		error_label = tk.Label(
 			table_window,
