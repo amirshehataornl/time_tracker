@@ -175,7 +175,6 @@ def display_work_log(parent, json_data):
 		except Exception as e:
 			messagebox.showerror("Error", f"Failed to edit entry: {str(e)}")
 
-	# Function to add a new entry
 	def add_entry(date):
 		try:
 			log = json_data.copy()
@@ -185,8 +184,13 @@ def display_work_log(parent, json_data):
 
 			add_window = tk.Toplevel(table_window)
 			add_window.title("Add Work Entry")
-			add_window.geometry("300x200")
+			add_window.geometry("300x250")  # Increased height for date field
 			add_window.configure(bg="#f5f6f5")
+
+			tk.Label(add_window, text="Date (YYYY-MM-DD):", bg="#f5f6f5").pack(pady=5)
+			date_entry = tk.Entry(add_window, width=20)
+			date_entry.insert(0, date)  # Prefill with provided date
+			date_entry.pack(pady=5)
 
 			tk.Label(add_window, text="Start Time (HH:MM:SS AM/PM):", bg="#f5f6f5").pack(pady=5)
 			start_entry = tk.Entry(add_window, width=20)
@@ -197,27 +201,47 @@ def display_work_log(parent, json_data):
 			end_entry.pack(pady=5)
 
 			def save_new_entry():
-				new_start = start_entry.get()
-				new_end = end_entry.get()
 				try:
-					start_dt = datetime.datetime.strptime(f"{date} {new_start}", "%Y-%m-%d %I:%M:%S %p")
+					new_date = date_entry.get().strip()
+					new_start = start_entry.get().strip()
+					new_end = end_entry.get().strip()
+
+					# Validate date format
+					datetime.datetime.strptime(new_date, "%Y-%m-%d")  # Raises ValueError if invalid
+
+					# Validate time format
+					start_dt = datetime.datetime.strptime(f"{new_date} {new_start}", "%Y-%m-%d %I:%M:%S %p")
 					new_start = start_dt.strftime("%I:%M:%S %p")
 					if new_end:
-						end_dt = datetime.datetime.strptime(f"{date} {new_end}", "%Y-%m-%d %I:%M:%S %p")
+						end_dt = datetime.datetime.strptime(f"{new_date} {new_end}", "%Y-%m-%d %I:%M:%S %p")
 						new_end = end_dt.strftime("%I:%M:%S %p")
-					if date not in log:
-						log[date] = []
-					log[date].append({"start": new_start, "end": new_end if new_end else None})
+					else:
+						new_end = None
+
+					# Initialize date in log if it doesn't exist
+					if new_date not in log:
+						log[new_date] = []
+
+					# Add new entry
+					log[new_date].append({"start": new_start, "end": new_end})
+
 					# Sort entries by start time
-					log[date].sort(key=lambda x: datetime.datetime.strptime(f"{date} {x['start']}", "%Y-%m-%d %I:%M:%S %p"))
-					if g_state_temp is not None:
-						log['g_state'] = g_state_temp
-					save_log(log)
+					log[new_date].sort(key=lambda x: datetime.datetime.strptime(f"{new_date} {x['start']}", "%Y-%m-%d %I:%M:%S %p"))
+
+					# Sort dates in log
+					sorted_log = {'g_state': g_state_temp} if g_state_temp is not None else {}
+					sorted_log.update({k: log[k] for k in sorted(log.keys())})
+
+					# Save to file
+					save_log(sorted_log)
+
+					# Refresh table
 					table_window.destroy()
-					display_work_log(parent, log)
+					display_work_log(parent, sorted_log)
 					add_window.destroy()
+
 				except ValueError:
-					messagebox.showerror("Error", "Invalid time format. Use HH:MM:SS AM/PM")
+					messagebox.showerror("Error", "Invalid date (YYYY-MM-DD) or time (HH:MM:SS AM/PM)")
 				except Exception as e:
 					messagebox.showerror("Error", f"Failed to add entry: {str(e)}")
 
